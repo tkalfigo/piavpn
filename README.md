@@ -2,11 +2,15 @@
 
 Shell scripts for managing VPN connections of PIA (Private Internet Access) from the command line
 
-Main script is `piavpn.sh`. It can be used in both interactive and command line mode.
+### Description
+
+The main script is `piavpn.sh`. It can be used in both interactive and command line mode.
 
 ### Prerequisites
 
-You ony need to install `figlet' (sudo apt-get install figlet) for a nicer output, but it is optional.
+Optional: `figlet' which you can install from your repo (`sudo apt-get install figlet`) and simply serves for a nicer output; still it is optional.
+
+For the `nmcli` (network manager's command line interface) to be able to handle your PIA connections, you need to edit the corresponding PIA files under `/etc/NetworkManager/system-connections/`. For details on what to do to enable each region so it is managable with the `piavpn.sh` script, please read: https://askubuntu.com/questions/57339/connect-disconnect-from-vpn-from-the-command-line/57409#57409?newreg=21c40769970a48909e8fee3df7bb308f
 
 ### Command line mode
 
@@ -24,4 +28,4 @@ Just run `sudo ./piavpn.sh` and you will get basic information about the current
 
 # Other scripts
 
-Independently you can user the other scripts to perform specific functions (script names are self explanatory).
+Independently you can use the other scripts to perform specific functions (script names are self explanatory).

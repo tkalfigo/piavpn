@@ -60,16 +60,14 @@ print_where_is_my_ip() {
 	rm $lynx_temp_file
 }
 
-# Saves nmcli enabled regions in temp file $nmcli_regions_file
+# Saves nmcli enabled regions in temp file $nmcli_regions_file and builds $regions_arr as well
 save_nmcli_enabled_regions() {
 	nmcli_regions_file=`mktemp`
-	reg_count=0
 	find /etc/NetworkManager/system-connections/PIA* | while read f;do 
 		# Assuming that a file that has a 'password-flags=1' and a '[vpn-secrets]' section, is enabled for nmcli
 		# -a ! -z $(sudo grep 'password-flags=0' "$f"
 		if [ ! -z $(sudo grep 'vpn-secrets' "$f") ];then 
 			echo "$f" | awk -F'system-connections/' '{print$2}' >> $nmcli_regions_file
-			reg_count=$((reg_count+1))
 		fi
 	done
 }
@@ -101,7 +99,7 @@ print_busy_spinner() {
 	echo -n -e "\r                 \r"
 }
 
-get_main_choice() {
+print_main_choices() {
 	active_conn=$(get_active_conn)
 	echo
 	echo -e "\t1. Terminate active VPN connection "
@@ -116,46 +114,80 @@ get_main_choice() {
 	return -1;
 }
 
-get_region_choice() {
+# Prints regions list and generates the $regions_arr at the same time from the $nmcli_regions_file 
+print_region_choices() {
 	echo
-	echo -e "\t1. Switzerland"
-	echo -e "\t2. Sweden"
-	echo -e "\t3. Romania"
-	echo -e "\t4. US East"
-	echo -e "\t5. US West"
-	echo -e "\t6. CA Toronto"
-	echo -e "\t7. Netherlands"
+	reg_count=1 # generated regions_arr is 1-indexed and not 0-indexed for convenience
+	while read next_region;do
+		regions_arr[$reg_count]=$next_region
+		echo -e "\t${reg_count}. $next_region"
+		reg_count=$((reg_count+1))
+	done < $nmcli_regions_file
 	echo
 	echo -n "Pick a region: "
-	read val
-	if [ "$val" -ge 1 -a "$val" -le 7 ];then
-		return "$val";
+	read selected_region_index
+	if [ "$selected_region_index" -lt 1 -o "$selected_region_index" -ge $reg_count ];then
+		echo "ERROR: invalid region"
+		exit -3
 	fi
-	return -1;
 }
 
+# First arg is the region's full name or the region's index (from the listling of nmcli enabled regions)
 start_new_conn() {
 	case "$1" in
-		1|"PIA - Switzerland")
-			/usr/bin/nmcli connection up id "PIA - Switzerland" &
+		1|"PIA - CA North York")
+			/usr/bin/nmcli connection up id "PIA - CA North York" &
 		;;
-		2|'PIA - Sweden')
-			/usr/bin/nmcli connection up id "PIA - Sweden" &
-		;;
-		3|'PIA - Romania')
-			/usr/bin/nmcli connection up id "PIA - Romania" &
-		;;
-		4|'PIA - US East')
-			/usr/bin/nmcli connection up id "PIA - US East" &
-		;;
-		5|'PIA - US West')
-			/usr/bin/nmcli connection up id "PIA - US West" &
-		;;
-		6|'PIA - CA Toronto')
+		2|'PIA - CA Toronto')
 			/usr/bin/nmcli connection up id "PIA - CA Toronto" &
 		;;
-		7|'PIA - Netherlands')
+		3|'PIA - France')
+			/usr/bin/nmcli connection up id "PIA - France" &
+		;;
+		4|'PIA - Germany')
+			/usr/bin/nmcli connection up id "PIA - Germany" &
+		;;
+		5|'PIA - Hong Kong')
+			/usr/bin/nmcli connection up id "PIA - Hond Kong" &
+		;;
+		6|'PIA - Netherlands')
 			/usr/bin/nmcli connection up id "PIA - Netherlands" &
+		;;
+		7|'PIA - Romania')
+			/usr/bin/nmcli connection up id "PIA - Romania" &
+		;;
+		8|'PIA - Sweden')
+			/usr/bin/nmcli connection up id "PIA - Sweden" &
+		;;
+		9|'PIA - Switzerland')
+			/usr/bin/nmcli connection up id "PIA - Switzerland" &
+		;;
+		10|'PIA - UK London')
+			/usr/bin/nmcli connection up id "PIA - UK London" &
+		;;
+		11|'PIA - UK Southampton')
+			/usr/bin/nmcli connection up id "PIA - UK Southampton" &
+		;;
+		12|'PIA - US California')
+			/usr/bin/nmcli connection up id "PIA - US California" &
+		;;
+		13|'PIA - US East')
+			/usr/bin/nmcli connection up id "PIA - US East" &
+		;;
+		14|'PIA - US Florida')
+			/usr/bin/nmcli connection up id "PIA - US Florida" &
+		;;
+		15|'PIA - US Midwest')
+			/usr/bin/nmcli connection up id "PIA - US Midwest" &
+		;;
+		16|'PIA - US Seattle')
+			/usr/bin/nmcli connection up id "PIA - US Seattle" &
+		;;
+		17|'PIA - US Texas')
+			/usr/bin/nmcli connection up id "PIA - US Texas" &
+		;;
+		18|'PIA - US West')
+			/usr/bin/nmcli connection up id "PIA - US West" &
 		;;
 		*)
 			echo "ERROR: Invalid region choice"
@@ -168,6 +200,7 @@ start_new_conn() {
 	return $?
 }
 
+# Prints active VPN connection's region
 print_region() {
 	active_conn=$(get_active_conn)
 	if [ ! -z "$active_conn" ];then
@@ -180,7 +213,7 @@ print_region() {
 		fi
 		echo
 	else
-		echo "* Current no active VPN connection"
+		echo "* Currently no active VPN connection"
 	fi
 }
 
@@ -206,8 +239,9 @@ stop_active_conn() {
 }
 
 main_loop() {
+	save_nmcli_enabled_regions
 	while true;do
-		get_main_choice
+		print_main_choices
 		main_choice=$?
 		if [ "$main_choice" -lt 0 ];then
 			echo "ERROR: Invalid choice"
@@ -217,6 +251,7 @@ main_loop() {
 				stop_active_conn
 				continue
 			elif [ "$main_choice" -eq 2 ];then
+				print_region_choices # if it doesn't exit, then it has set var selected_region_index
 				active_conn=$(get_active_conn)
 				if [ ! -z "$active_conn" ];then
 					stop_active_conn
@@ -224,9 +259,7 @@ main_loop() {
 						continue
 					fi
 				fi
-				get_region_choice
-				region_choice=$?
-				start_new_conn "$region_choice"
+				start_new_conn "${regions_arr[$selected_region_index]}"
 				if [ $? -ne 0 ];then
 					continue
 				else 
