@@ -100,18 +100,27 @@ print_busy_spinner() {
 }
 
 print_main_choices() {
+	valid_choices=(invalid 1 2 3 4 5)
 	active_conn=$(get_active_conn)
 	echo
-	echo -e "\t1. Terminate active VPN connection "
-	echo -e "\t2. Start new VPN connection"
-	echo -e "\t3. Exit"
+	echo -e "\t1. Show active VPN connection"
+	echo -e "\t2. Where is my external IP located? (according to PIA)"
+	echo -e "\t3. Terminate active VPN connection "
+	echo -e "\t4. Start new VPN connection"
+	echo -e "\t5. Exit"
 	echo
 	echo -n "Your choice: "
 	read val
-	if [ "$val" -ge 1 -a "$val" -le 3 ];then
-		return "$val";
-	fi
-	return -1;
+	while true;do
+		if [ "${valid_choices[$val]}" != "invalid" ];then
+			return $val
+		else
+			echo "ERROR: Invalid choice"
+			echo -n "Your choice: "
+			read val
+		fi
+	done
+	return "$val"
 }
 
 # Prints regions list and generates the $regions_arr at the same time from the $nmcli_regions_file 
@@ -201,7 +210,7 @@ start_new_conn() {
 }
 
 # Prints active VPN connection's region
-print_region() {
+print_active_conn_region() {
 	active_conn=$(get_active_conn)
 	if [ ! -z "$active_conn" ];then
 		echo -n "* Detected active VPN connection: "
@@ -242,35 +251,37 @@ main_loop() {
 	save_nmcli_enabled_regions
 	while true;do
 		print_main_choices
-		main_choice=$?
-		if [ "$main_choice" -lt 0 ];then
-			echo "ERROR: Invalid choice"
+		main_choice=$? # has already been checked to be a valid choice
+		if [ "$main_choice" -eq 1 ];then
+			print_active_conn_region
 			continue
-		else
-			if [ "$main_choice" -eq 1 ];then
+		elif [ "$main_choice" -eq 2 ];then
+			print_where_is_my_ip
+			continue
+		elif [ "$main_choice" -eq 3 ];then
+			stop_active_conn
+			continue
+		elif [ "$main_choice" -eq 4 ];then
+			print_region_choices # if it doesn't exit, then it has set var selected_region_index
+			active_conn=$(get_active_conn)
+			if [ ! -z "$active_conn" ];then
 				stop_active_conn
-				continue
-			elif [ "$main_choice" -eq 2 ];then
-				print_region_choices # if it doesn't exit, then it has set var selected_region_index
-				active_conn=$(get_active_conn)
-				if [ ! -z "$active_conn" ];then
-					stop_active_conn
-					if [ $? -ne 0 ];then
-						continue
-					fi
-				fi
-				start_new_conn "${regions_arr[$selected_region_index]}"
 				if [ $? -ne 0 ];then
 					continue
-				else 
-					echo "* VPN connection successful"
 				fi
-			else
-				echo 
-				exit 0;
 			fi
-			break;
+			start_new_conn "${regions_arr[$selected_region_index]}"
+			if [ $? -ne 0 ];then
+				continue
+			else 
+				echo "* VPN connection successful"
+			fi
+			continue
+		else
+			echo 
+			exit 0;
 		fi
+		break;
 	done
 	print_where_is_my_ip
 	exit 0
@@ -298,7 +309,7 @@ if [ $# -gt 0 ];then
 				exit 0
 			;;
 			-s|--status)
-				print_region
+				print_active_conn_region
 				shift
 			;;
 			-u|--up)
@@ -342,6 +353,6 @@ if [ $# -gt 0 ];then
 else
 	check_sudo
 	print_where_is_my_ip
-	print_region	
+	print_active_conn_region	
 	main_loop
 fi
