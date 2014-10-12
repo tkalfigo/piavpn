@@ -83,7 +83,7 @@ print_where_is_my_ip() {
 	else
 		echo "* PIA says you are at:"
 		lynx_temp_file=`mktemp`
-		/usr/bin/lynx -dump https://www.privateinternetaccess.com/pages/whats-my-ip/ | egrep 'City|Region|Country' > $lynx_temp_file &
+		/usr/bin/lynx -dump https://www.privateinternetaccess.com/pages/whats-my-ip/ | egrep 'IP Address|City|Region|Country' > $lynx_temp_file &
 		# PID of running job is stored as $!
 		print_busy_spinner $!
 		# show user's location according to PIA
