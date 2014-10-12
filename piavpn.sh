@@ -4,18 +4,27 @@
 
 check_sudo() {
 	if [ `/usr/bin/whoami` != 'root' ];then
-		echo 'ERROR: run script with sudo'
-		exit -1;
+		echo 'Error: run script with sudo'
+		exit 1;
 	fi
 }
 	
 get_active_conn() {
-	echo `nm-tool | grep VPN | awk -F'-' '{print$3}' | sed "s/\(.*\).\{2\}/\1/"`
+	echo `nm-tool | grep VPN | awk -F'[' '{print$2}' | awk -F']' '{print$1}'`
+}
+
+pretty_print() {
+	if hash figlet 2>/dev/null;then
+		echo -e "\n"
+		/usr/bin/figlet -f digital $1
+	else
+		echo -e "$1\n"
+	fi
 }
 
 has_active_conn() {
 	active_conn=$(get_active_conn)
-	if [ ! -z $active_conn ];then
+	if [ ! -z "$active_conn" ];then
 		return 1
 	fi
 	return 0
@@ -47,42 +56,7 @@ clean_up() {
 	if [ -f "$nmcli_regions_file" ];then
 		/bin/rm $nmcli_regions_file
 	fi
-	echo -e "* Exiting\n"
-}
-print_where_is_my_ip() {
-	echo "* PIA says you are at:"
-	lynx_temp_file=`mktemp`
-	/usr/bin/lynx -dump https://www.privateinternetaccess.com/pages/whats-my-ip/ | egrep 'City|Region|Country' > $lynx_temp_file &
-	# PID of running job is stored as $!
-	print_busy_spinner $!
-	# show user's location according to PIA
-	/bin/cat $lynx_temp_file
-	rm $lynx_temp_file
-}
-
-# Saves nmcli enabled regions in temp file $nmcli_regions_file and builds $regions_arr as well
-save_nmcli_enabled_regions() {
-	nmcli_regions_file=`mktemp`
-	find /etc/NetworkManager/system-connections/PIA* | while read f;do 
-		# Assuming that a file that has a 'password-flags=1' and a '[vpn-secrets]' section, is enabled for nmcli
-		# -a ! -z $(sudo grep 'password-flags=0' "$f"
-		if [ ! -z $(sudo grep 'vpn-secrets' "$f") ];then 
-			echo "$f" | awk -F'system-connections/' '{print$2}' >> $nmcli_regions_file
-		fi
-	done
-}
-
-print_nmcli_activated_regions() {
-	save_nmcli_enabled_regions
-	echo "* nmcli enabled PIA regions: "
-	/bin/cat $nmcli_regions_file
-}
-
-check_region_is_valid() {
-	if [ ! -z "`grep "$1" $nmcli_regions_file`" ];then
-		return 0;
-	fi
-	return -1;
+	# echo -e "* Exiting\n"
 }
 
 # PID of the running command passed as 1st arg
@@ -99,7 +73,53 @@ print_busy_spinner() {
 	echo -n -e "\r                 \r"
 }
 
+print_where_is_my_ip() {
+	/bin/ping -c 3 google.com 2>&1 1>/dev/null &
+	# Cannot use print_busy_spinner here because we need the exit code of the job; so we wait()
+	wait $!
+	if [ $? -ne 0 ];then
+		pretty_print "No network!"
+		return 1
+	else
+		echo "* PIA says you are at:"
+		lynx_temp_file=`mktemp`
+		/usr/bin/lynx -dump https://www.privateinternetaccess.com/pages/whats-my-ip/ | egrep 'City|Region|Country' > $lynx_temp_file &
+		# PID of running job is stored as $!
+		print_busy_spinner $!
+		# show user's location according to PIA
+		/bin/cat $lynx_temp_file
+		rm $lynx_temp_file
+		return 0
+	fi
+}
+
+# Saves nmcli enabled regions in temp file $nmcli_regions_file
+save_nmcli_enabled_regions() {
+	nmcli_regions_file=`mktemp`
+	find /etc/NetworkManager/system-connections/PIA* | while read f;do 
+		# Assuming that a file that has a 'password-flags=1' and a '[vpn-secrets]' section, is enabled for nmcli
+		# -a ! -z $(sudo grep 'password-flags=0' "$f"
+		if [ ! -z $(sudo grep 'vpn-secrets' "$f") ];then 
+			echo "$f" | awk -F'system-connections/' '{print$2}' >> $nmcli_regions_file
+		fi
+	done
+}
+
+print_nmcli_enabled_regions() {
+	save_nmcli_enabled_regions
+	echo "* nmcli enabled PIA regions: "
+	/bin/cat $nmcli_regions_file
+}
+
+check_region_is_valid() {
+	if [ ! -z "`grep "$1" $nmcli_regions_file`" ];then
+		return 0
+	fi
+	return 1;
+}
+
 print_main_choices() {
+	# array element at [0] is not used
 	valid_choices=(invalid 1 2 3 4 5)
 	active_conn=$(get_active_conn)
 	echo
@@ -115,7 +135,7 @@ print_main_choices() {
 		if [ "${valid_choices[$val]}" != "invalid" ];then
 			return $val
 		else
-			echo "ERROR: Invalid choice"
+			echo "Error: Invalid choice"
 			echo -n "Your choice: "
 			read val
 		fi
@@ -136,8 +156,8 @@ print_region_choices() {
 	echo -n "Pick a region: "
 	read selected_region_index
 	if [ "$selected_region_index" -lt 1 -o "$selected_region_index" -ge $reg_count ];then
-		echo "ERROR: invalid region"
-		exit -3
+		echo "Error: invalid region"
+		exit 3
 	fi
 }
 
@@ -199,14 +219,53 @@ start_new_conn() {
 			/usr/bin/nmcli connection up id "PIA - US West" &
 		;;
 		*)
-			echo "ERROR: Invalid region choice"
-			return -1
+			echo "Error: Invalid region choice"
+			return 1
 		;;
 	esac
-	# Pass PID of running nmcli job as 1st param
-	print_busy_spinner $!
-	# return the exit code of executing nmcli
-	return $?
+	# Cannot use print_busy_spinner here because we need the exit code of the job; so we wait()
+	wait $!
+	nmcli_exit_code=$?
+
+	if [ $nmcli_exit_code -ne 0 ];then
+		echo -n "Error: failed to start connection; exit code ($nmcli_exit_code) means: "
+		print_nmcli_exit_code_msg $nmcli_exit_code
+		return $nmcli_exit_code
+	else
+		return 0
+	fi
+}
+
+print_nmcli_exit_code_msg() {
+	case $1 in
+		1)
+			echo "'Unknown or unspecified error'"
+		;;
+		2)
+			echo "'Invalid user input, wrong nmcli invocation'"
+		;;
+		3)
+			echo "'Timeout expired (see commands with --timeout option)'"
+		;;
+		4)
+			echo "'Connection activation failed'"
+		;;
+		5)
+			echo "'Connection deactivation failed'"
+		;;
+		6)
+			echo "'Disconnecting device failed'"
+		;;
+		7)
+			echo "'Connection deletion failed'"
+		;;
+		8)
+			echo "'NetworkManager is not running'"
+		;;
+		9)
+			echo "'nmcli and NetworkManager versions mismatch'"
+		;;
+	esac
 }
 
 # Prints active VPN connection's region
@@ -214,13 +273,7 @@ print_active_conn_region() {
 	active_conn=$(get_active_conn)
 	if [ ! -z "$active_conn" ];then
 		echo -n "* Detected active VPN connection: "
-		if hash figlet 2>/dev/null;then
-			echo -e "\n"
-			/usr/bin/figlet -f digital $active_conn
-		else
-			echo -e "$active_conn\n"
-		fi
-		echo
+		pretty_print "$active_conn"
 	else
 		echo "* Currently no active VPN connection"
 	fi
@@ -229,19 +282,19 @@ print_active_conn_region() {
 stop_active_conn() {
 	active_conn=$(get_active_conn)
 	if [ -z "$active_conn" ];then
-		echo "ERROR: no active VPN connection"
-		return -1
+		echo "Error: no active VPN connection"
+		return 1
 	else
-		active_conn="PIA - $active_conn"
 		echo "* Terminating VPN connection: $active_conn"
 		/usr/bin/nmcli con down id "$active_conn" &
-		# PID of running job is stored as $!
-		print_busy_spinner $!
-		if [ $? -ne 0 ];then
-			echo "ERROR: Failed to stop VPN connection"
-			return -2
+		# Cannot use print_busy_spinner here because we need the exit code of the job; so we wait()
+		wait $!
+		nmcli_exit_code=$?
+		if [ $nmcli_exit_code -ne 0 ];then
+			echo -n "Error: failed to stop VPN connection; exit code ($nmcli_exit_code) means: "
+			print_nmcli_exit_code_msg $nmcli_exit_code
+			return 2
 		else
-			echo "* Terminated successfully"
 			return 0
 		fi
 	fi
@@ -260,21 +313,23 @@ main_loop() {
 			continue
 		elif [ "$main_choice" -eq 3 ];then
 			stop_active_conn
+			if [ $? -eq 0 ];then
+				echo "* Terminated successfully"
+			fi
 			continue
 		elif [ "$main_choice" -eq 4 ];then
 			print_region_choices # if it doesn't exit, then it has set var selected_region_index
 			active_conn=$(get_active_conn)
 			if [ ! -z "$active_conn" ];then
 				stop_active_conn
-				if [ $? -ne 0 ];then
-					continue
+				if [ $? -eq 0 ];then
+					echo "* Terminated successfully"
 				fi
+				continue
 			fi
 			start_new_conn "${regions_arr[$selected_region_index]}"
-			if [ $? -ne 0 ];then
-				continue
-			else 
-				echo "* VPN connection successful"
+			if [ $? -eq 0 ];then
+				echo "* Connection established"
 			fi
 			continue
 		else
@@ -301,15 +356,15 @@ if [ $# -gt 0 ];then
 			-l|--list)
 				check_sudo
 				echo "* List of PIA regions activated for nmcli:"
-				print_nmcli_activated_regions
+				print_nmcli_enabled_regions
 		    		exit 0
 		    	;;
 			-g|--geolocation)
 				print_where_is_my_ip
-				exit 0
+				exit $?
 			;;
 			-s|--status)
-				print_active_conn_region
+				echo $(get_active_conn)
 				shift
 			;;
 			-u|--up)
@@ -319,24 +374,29 @@ if [ $# -gt 0 ];then
 				save_nmcli_enabled_regions
 				check_region_is_valid "$region_name"
 				if [ $? -ne 0 ];then
-					echo "ERROR: region '$region_name' is invalid"
-					exit -1
+					echo "Error: region '$region_name' is invalid"
+					exit 1
 				fi
 				has_active_conn 
 				if [ $? -eq 1 ]; then
 					stop_active_conn
+					if [ $? -eq 0 ];then
+						echo "* Terminated successfully"
+					fi
 				fi
 				echo "* Starting VPN connection to: $region_name"
 				start_new_conn "$region_name"
 				if [ $? -eq 0 ];then
-					echo "* Connection established."
-					print_where_is_my_ip
+					echo "* Connection successful"
 					exit 0
 				fi
 			;;
 			-k|--kill)
 				check_sudo
 				stop_active_conn
+				if [ $? -eq 0 ];then
+					echo "* Terminated successfully"
+				fi
 				exit 0
 			;;
 			-h|--help)
