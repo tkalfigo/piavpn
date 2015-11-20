@@ -83,7 +83,7 @@ print_where_is_my_ip() {
 	else
 		echo "* PIA says you are at:"
 		lynx_temp_file=`mktemp`
-		/usr/bin/lynx -dump https://www.privateinternetaccess.com/pages/whats-my-ip/ | egrep 'IP Address|City|Region|Country' > $lynx_temp_file &
+		/usr/bin/lynx -dump https://www.privateinternetaccess.com/pages/whats-my-ip/ | egrep 'my IP Address[^?]|City|Region|Country' > $lynx_temp_file &
 		# PID of running job is stored as $!
 		print_busy_spinner $!
 		# show user's location according to PIA
@@ -161,8 +161,19 @@ print_region_choices() {
 	fi
 }
 
+start_IPv6_leak_protection() {
+	echo "* IPv6 leak protection for interface '$active_interface': ON";
+	echo 1 > /proc/sys/net/ipv6/conf/$active_interface/disable_ipv6
+}
+
+stop_IPv6_leak_protection() {
+	echo "* IPv6 leak protection for interface '$active_interface': OFF";
+	echo 0 > /proc/sys/net/ipv6/conf/$active_interface/disable_ipv6
+}
+
 # First arg is the region's full name or the region's index (from the listling of nmcli enabled regions)
 start_new_conn() {
+	start_IPv6_leak_protection
 	case "$1" in
 		1|"PIA - CA North York")
 			/usr/bin/nmcli connection up id "PIA - CA North York" &
@@ -219,6 +230,7 @@ start_new_conn() {
 			/usr/bin/nmcli connection up id "PIA - US West" &
 		;;
 		*)
+			stop_IPv6_leak_protection
 			echo "Error: Invalid region choice"
 			return 1
 		;;
@@ -295,6 +307,7 @@ stop_active_conn() {
 			print_nmcli_exit_code_msg $nmcli_exit_code
 			return 2
 		else
+			stop_IPv6_leak_protection
 			return 0
 		fi
 	fi
@@ -346,6 +359,8 @@ main_loop() {
 ### MAIN ###
 
 trap clean_up EXIT
+
+active_interface=`/sbin/route | grep default | awk  '{print$8}'`
 
 if [ $# -gt 0 ];then
 	while [[ $# > 0 ]];do
