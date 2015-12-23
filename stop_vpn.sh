@@ -1,9 +1,8 @@
-activeVPN=`nm-tool |grep VPN | awk -F'-' '{print$3}'| sed "s/\(.*\).\{2\}/\1/"`
+activeVPN=`nmcli -f TYPE,DEVICE,NAME c | egrep 'vpn\s+[^- ]+' | awk '{$1=$2=""; print $0}' | xargs`
 
 if [ -z "$activeVPN" ];then
 	echo "ERROR: no active VPN connection; exiting..."
 else
-	activeVPN="PIA -$activeVPN"
 	echo "Stopping VPN connection: $activeVPN"
 	sudo /usr/bin/nmcli con down id "$activeVPN"
 	if [ $? -eq 0 ];then

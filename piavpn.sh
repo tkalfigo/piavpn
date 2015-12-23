@@ -10,7 +10,7 @@ check_sudo() {
 }
 	
 get_active_conn() {
-	echo `nm-tool | grep VPN | awk -F'[' '{print$2}' | awk -F']' '{print$1}'`
+	echo `nmcli -f TYPE,DEVICE,NAME c | egrep 'vpn\s+[^- ]+' | awk '{$1=$2=""; print $0}' | xargs`
 }
 
 pretty_print() {
@@ -360,7 +360,7 @@ main_loop() {
 
 trap clean_up EXIT
 
-active_interface=`/sbin/route | grep default | awk  '{print$8}'`
+active_interface=`/sbin/route | grep default | awk  '{print$8}' | grep -v tun`
 
 if [ $# -gt 0 ];then
 	while [[ $# > 0 ]];do
